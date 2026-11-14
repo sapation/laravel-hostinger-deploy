@@ -132,7 +132,7 @@ Your GitHub Personal Access Token needs the following permissions:
 ## Requirements
 
 - PHP ^8.2
-- Laravel ^11.0|^12.0
+- Laravel ^11.0|^12.0|^13.0 (Laravel 13 requires PHP ^8.3)
 - SSH access to Hostinger server
 - Git repository (GitHub recommended)
 - **PHP `exec()` function must be enabled** (required for executing SSH commands and process management)
