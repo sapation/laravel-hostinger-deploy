@@ -81,6 +81,56 @@ abstract class BaseHostingerCommand extends Command
             config('hostinger-deploy.ssh.port', 22),
             config('hostinger-deploy.ssh.timeout', 30)
         );
+
+        $this->ssh->setKeyPath($this->resolveDeployKeyPath());
+    }
+
+    /**
+     * Resolve the server-side key path for this repository.
+     * Uses HOSTINGER_DEPLOY_KEY_PATH if set, otherwise ~/.ssh/deploy_<owner>_<repo>.
+     */
+    protected function resolveDeployKeyPath(): string
+    {
+        $configured = config('hostinger-deploy.ssh.deploy_key_path');
+        if (!empty($configured)) {
+            return $configured;
+        }
+
+        $repoInfo = $this->github->isGitRepository() ? $this->github->getRepositoryInfo() : null;
+        if (!$repoInfo || empty($repoInfo['owner']) || empty($repoInfo['name'])) {
+            return '~/.ssh/id_rsa';
+        }
+
+        $slug = preg_replace('/[^A-Za-z0-9_-]+/', '-', "{$repoInfo['owner']}_{$repoInfo['name']}");
+
+        return "~/.ssh/deploy_{$slug}";
+    }
+
+    /**
+     * Comment embedded in generated keys so they are identifiable on GitHub/the server.
+     */
+    protected function deployKeyComment(): string
+    {
+        $repoInfo = $this->github->isGitRepository() ? $this->github->getRepositoryInfo() : null;
+
+        return $repoInfo
+            ? "hostinger-deploy-{$repoInfo['owner']}/{$repoInfo['name']}"
+            : 'github-deploy-key';
+    }
+
+    /**
+     * Make an existing clone on the server use this repository's key for every git command,
+     * including `git fetch` run by the GitHub Actions workflow.
+     */
+    protected function configureServerRepositoryKey(): void
+    {
+        try {
+            $path = $this->getAbsoluteSitePath($this->getSiteDir());
+            $sshCommand = $this->ssh->getGitSshCommand();
+            $this->ssh->execute("if [ -d '{$path}/.git' ]; then cd '{$path}' && git config core.sshCommand \"{$sshCommand}\"; fi");
+        } catch (\Exception $e) {
+            // Non-fatal: the next hostinger:deploy run configures it as well
+        }
     }
 
     /**
@@ -201,13 +251,13 @@ abstract class BaseHostingerCommand extends Command
     {
         try {
             if (!$this->ssh->sshKeyExists()) {
-                $this->info('🔑 Generating SSH keys on server...');
-                if (!$this->ssh->generateSshKey()) {
+                $this->info("🔑 Generating SSH key on server ({$this->ssh->getKeyPath()})...");
+                if (!$this->ssh->generateSshKey($this->deployKeyComment())) {
                     $this->error('❌ Failed to generate SSH keys');
                     return false;
                 }
             } else {
-                $this->info('🔑 SSH keys already exist on server');
+                $this->info("🔑 Using existing SSH key on server ({$this->ssh->getKeyPath()})");
             }
 
             // Get public key
@@ -348,7 +398,8 @@ abstract class BaseHostingerCommand extends Command
             // This is a lightweight way to verify if the deploy key has access to the repository
             // Escape the repo URL properly
             $escapedRepoUrl = escapeshellarg($repoUrl);
-            $testCommand = "git ls-remote {$escapedRepoUrl} HEAD 2>&1";
+            $sshCommand = $this->ssh->getGitSshCommand();
+            $testCommand = "GIT_SSH_COMMAND=\"{$sshCommand}\" git ls-remote {$escapedRepoUrl} HEAD 2>&1";
             
             try {
                 $result = $this->ssh->execute($testCommand);

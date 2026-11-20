@@ -12,6 +12,12 @@ class SshConnectionService
     protected int $port;
     protected int $timeout;
 
+    /**
+     * Path (on the server) of the private key used for Git access and CI/CD.
+     * Must be shell-expandable (e.g. "~/.ssh/deploy_owner_repo"), so it is never quoted.
+     */
+    protected string $keyPath = '~/.ssh/id_rsa';
+
     public function __construct(string $host, string $username, int $port = 22, int $timeout = 30)
     {
         $this->host = $host;
@@ -91,12 +97,45 @@ class SshConnectionService
     }
 
     /**
+     * Set the server-side key path used for this repository.
+     */
+    public function setKeyPath(string $keyPath): void
+    {
+        // Accept the public key path by mistake: we always need the private key path
+        $keyPath = preg_replace('/\.pub$/', '', trim($keyPath));
+
+        if (!preg_match('#^[A-Za-z0-9_./~-]+$#', $keyPath)) {
+            throw new \InvalidArgumentException("Invalid SSH key path: {$keyPath}. Only letters, numbers, '_', '-', '.', '/' and '~' are allowed.");
+        }
+
+        $this->keyPath = $keyPath;
+    }
+
+    /**
+     * Get the server-side key path used for this repository.
+     */
+    public function getKeyPath(): string
+    {
+        return $this->keyPath;
+    }
+
+    /**
+     * SSH command git should use on the server so it authenticates with this repository's key.
+     * Suitable for GIT_SSH_COMMAND or `git config core.sshCommand` (both are run through the shell,
+     * so "~" is expanded when git runs it).
+     */
+    public function getGitSshCommand(): string
+    {
+        return "ssh -i {$this->keyPath} -o IdentitiesOnly=yes";
+    }
+
+    /**
      * Get the public key from the server.
      */
     public function getPublicKey(): ?string
     {
         try {
-            return trim($this->execute('cat ~/.ssh/id_rsa.pub 2>/dev/null || echo ""'));
+            return trim($this->execute("cat {$this->keyPath}.pub 2>/dev/null || echo \"\""));
         } catch (\Exception $e) {
             return null;
         }
@@ -108,7 +147,7 @@ class SshConnectionService
     public function getPrivateKey(): ?string
     {
         try {
-            return trim($this->execute('cat ~/.ssh/id_rsa 2>/dev/null || echo ""'));
+            return trim($this->execute("cat {$this->keyPath} 2>/dev/null || echo \"\""));
         } catch (\Exception $e) {
             return null;
         }
@@ -117,10 +156,11 @@ class SshConnectionService
     /**
      * Generate SSH key pair on the server if it doesn't exist.
      */
-    public function generateSshKey(): bool
+    public function generateSshKey(string $comment = 'github-deploy-key'): bool
     {
         try {
-            $this->execute('ssh-keygen -t rsa -b 4096 -C "github-deploy-key" -N "" -f ~/.ssh/id_rsa');
+            $comment = escapeshellarg($comment);
+            $this->execute("mkdir -p ~/.ssh && chmod 700 ~/.ssh && ssh-keygen -t rsa -b 4096 -C {$comment} -N \"\" -f {$this->keyPath}");
             return true;
         } catch (\Exception $e) {
             return false;
@@ -182,7 +222,7 @@ class SshConnectionService
     public function sshKeyExists(): bool
     {
         try {
-            $result = $this->execute('test -f ~/.ssh/id_rsa && echo "exists" || echo "not_exists"');
+            $result = $this->execute("test -f {$this->keyPath} && echo \"exists\" || echo \"not_exists\"");
             return trim($result) === 'exists';
         } catch (\Exception $e) {
             return false;

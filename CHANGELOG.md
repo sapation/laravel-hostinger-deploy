@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Each repository now gets its own SSH key on the server (`~/.ssh/deploy_<owner>_<repo>`) instead of sharing `~/.ssh/id_rsa`. Fixes GitHub's "Key is already in use" error when deploying more than one repository from the same Hostinger account. The key is used for the deploy key, the `SSH_KEY` secret, and is stored in the clone's `core.sshCommand`.
+  - **Upgrade note:** existing deployments get a new key on the next run; it is added automatically with `GITHUB_API_TOKEN`, otherwise you are prompted to add it. An existing `SSH_KEY` secret keeps working; re-run `hostinger:setup-cicd` if you want it switched to the new key. Set `HOSTINGER_DEPLOY_KEY_PATH=~/.ssh/id_rsa` to keep the old behaviour.
+
+### Added
+- `HOSTINGER_DEPLOY_KEY_PATH` / `ssh.deploy_key_path` config to choose the server-side key
+
 ## [0.6.0] - 2026-11-14
 
 ### Added

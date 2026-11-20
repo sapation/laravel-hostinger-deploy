@@ -328,24 +328,31 @@ class DeploySharedCommand extends BaseHostingerCommand
             $commands[] = "ssh-keyscan -H {$escapedHost} >> ~/.ssh/known_hosts 2>/dev/null || true";
         }
 
+        // Use this repository's own key for git (GitHub deploy keys can't be shared between repos)
+        $gitSsh = 'GIT_SSH_COMMAND="' . $this->ssh->getGitSshCommand() . '"';
+
         switch ($cloneChoice) {
             case 'clone_direct':
                 // Fresh deployment - clone directly
-                $commands[] = "git clone {$repoUrl} .";
+                $commands[] = "{$gitSsh} git clone {$repoUrl} .";
                 break;
             case 'delete_and_clone_direct':
                 // Replace existing - delete everything and clone
                 $commands[] = "rm -rf * .[^.]* 2>/dev/null || true";
-                $commands[] = "git clone {$repoUrl} .";
+                $commands[] = "{$gitSsh} git clone {$repoUrl} .";
                 break;
             case 'skip':
                 // Keep existing - just update dependencies
                 break;
             default:
                 // Default: check if repository exists
-                $commands[] = "if [ -d .git ]; then git pull; else git clone {$repoUrl} .; fi";
+                $commands[] = "if [ -d .git ]; then {$gitSsh} git pull; else {$gitSsh} git clone {$repoUrl} .; fi";
                 break;
         }
+
+        // Persist the key choice in the clone so later git commands (e.g. the GitHub Actions
+        // workflow's `git fetch`) use it too
+        $commands[] = "if [ -d .git ]; then git config core.sshCommand \"{$this->ssh->getGitSshCommand()}\"; fi";
 
         // Install dependencies
         $composerFlags = config('hostinger-deploy.deployment.composer_flags', '--no-dev --optimize-autoloader');
@@ -427,7 +434,7 @@ class DeploySharedCommand extends BaseHostingerCommand
         
         if (!$publicKey) {
             $this->error('❌ Could not retrieve public key from server. Generating new key...');
-            if ($this->ssh->generateSshKey()) {
+            if ($this->ssh->generateSshKey($this->deployKeyComment())) {
                 $publicKey = $this->ssh->getPublicKey();
             }
         }

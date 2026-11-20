@@ -63,6 +63,9 @@ class SetupAutomatedDeployCommand extends BaseHostingerCommand
             return self::FAILURE;
         }
 
+        // Make an existing clone on the server use this repository's key for `git fetch`
+        $this->configureServerRepositoryKey();
+
         // Check if GitHub API is available for automated setup
         if ($this->githubAPI) {
             // Automated setup via API

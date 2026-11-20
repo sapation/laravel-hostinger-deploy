@@ -15,6 +15,7 @@ return [
         'username' => env('HOSTINGER_SSH_USERNAME'),
         'port' => env('HOSTINGER_SSH_PORT', 22),
         'timeout' => 30,
+        'deploy_key_path' => env('HOSTINGER_DEPLOY_KEY_PATH'),
     ],
 
     /*

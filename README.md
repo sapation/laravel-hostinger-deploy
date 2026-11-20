@@ -41,6 +41,24 @@ GITHUB_API_TOKEN=your-github-token
 >
 > Once configured, the deployment commands will use your SSH key automatically, making deployments seamless and secure.
 
+### Deploy Keys (one key per repository)
+
+GitHub only lets a deploy key be used **once across all of GitHub**, and on Hostinger shared hosting every website shares the same SSH user. So instead of the shared `~/.ssh/id_rsa`, the package creates a separate key on the server for each repository:
+
+```
+~/.ssh/deploy_<owner>_<repo>
+```
+
+That key is used as the repository's deploy key and as the `SSH_KEY` GitHub Actions secret, and it is saved in the clone's `core.sshCommand` so `git pull`/`git fetch` on the server always use it. Deploying several Laravel apps from one Hostinger account therefore no longer fails with *"Key is already in use"*.
+
+To use a key you created yourself (or the old shared `~/.ssh/id_rsa`), set its **server-side** path:
+
+```env
+HOSTINGER_DEPLOY_KEY_PATH=~/.ssh/my_existing_key
+```
+
+> **Note:** Keys added in hPanel under *SSH Access → SSH Keys* only let you log **into** the server. The deploy key must be a private key that lives **on** the server in `~/.ssh/`.
+
 ## Quick Start (All-in-One Command)
 
 The easiest way to deploy and set up automated deployment:
@@ -127,6 +145,7 @@ Your GitHub Personal Access Token needs the following permissions:
 | `HOSTINGER_SSH_USERNAME` | All commands | Hostinger SSH username |
 | `HOSTINGER_SSH_PORT` | All commands | SSH port (default: 22) |
 | `HOSTINGER_SITE_DIR` | All commands | Website folder name |
+| `HOSTINGER_DEPLOY_KEY_PATH` | Optional | Server-side key for this repo (default: `~/.ssh/deploy_<owner>_<repo>`) |
 | `GITHUB_API_TOKEN` | Automated setup | GitHub Personal Access Token (requires Administration permission for deploy keys) |
 
 ## Requirements
